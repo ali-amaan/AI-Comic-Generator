@@ -14,11 +14,13 @@ interface BookProps {
     isStarted: boolean;
     isSetupVisible: boolean;
     logs: string[];
+    isFinale: boolean;
     onSheetClick: (index: number) => void;
     onChoice: (pageIndex: number, choice: string) => void;
     onOpenBook: () => void;
     onDownload: () => void;
     onReset: () => void;
+    onNextIssue: (isFinale: boolean) => void;
 }
 
 export const Book: React.FC<BookProps> = (props) => {
@@ -44,10 +46,12 @@ export const Book: React.FC<BookProps> = (props) => {
                         face={sheet.front} 
                         allFaces={props.comicFaces} 
                         logs={props.logs}
+                        isFinale={props.isFinale}
                         onChoice={props.onChoice} 
                         onOpenBook={props.onOpenBook} 
                         onDownload={props.onDownload} 
-                        onReset={props.onReset} 
+                        onReset={props.onReset}
+                        onNextIssue={props.onNextIssue}
                       />
                   </div>
                   <div className="back">
@@ -55,10 +59,12 @@ export const Book: React.FC<BookProps> = (props) => {
                         face={sheet.back} 
                         allFaces={props.comicFaces} 
                         logs={props.logs}
+                        isFinale={props.isFinale}
                         onChoice={props.onChoice} 
                         onOpenBook={props.onOpenBook} 
                         onDownload={props.onDownload} 
                         onReset={props.onReset} 
+                        onNextIssue={props.onNextIssue}
                       />
                   </div>
               </div>

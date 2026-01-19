@@ -79,7 +79,7 @@ export const Setup: React.FC<SetupProps> = (props) => {
              }}>
           <div className="min-h-full flex items-center justify-center p-4 pb-32 md:pb-24">
             <div className="max-w-[900px] w-full bg-white p-4 md:p-5 rotate-1 border-[6px] border-black shadow-[12px_12px_0px_rgba(0,0,0,0.6)] text-center relative overflow-hidden">
-                
+                ƒ
                 {/* Generation Console Overlay */}
                 {props.isLaunching && (
                     <div className="absolute inset-0 z-[50] bg-black/95 flex flex-col p-8 text-left font-mono border-8 border-yellow-400 rotate-[-1deg]">
@@ -171,9 +171,6 @@ export const Setup: React.FC<SetupProps> = (props) => {
                             )}
                         </div>
                         
-                        <p className="text-[10px] text-gray-500 leading-tight mt-1 px-1">
-                            The Prohibited Use Policy applies. Do not generate content that infringes on others' privacy rights.
-                        </p>
                     </div>
 
                     {/* Right Column: Settings */}

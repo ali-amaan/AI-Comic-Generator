@@ -12,13 +12,15 @@ interface PanelProps {
     face?: ComicFace;
     allFaces: ComicFace[]; 
     logs: string[];
+    isFinale: boolean;
     onChoice: (pageIndex: number, choice: string) => void;
     onOpenBook: () => void;
     onDownload: () => void;
     onReset: () => void;
+    onNextIssue: (isFinale: boolean) => void;
 }
 
-export const Panel: React.FC<PanelProps> = ({ face, allFaces, logs, onChoice, onOpenBook, onDownload, onReset }) => {
+export const Panel: React.FC<PanelProps> = ({ face, allFaces, logs, isFinale, onChoice, onOpenBook, onDownload, onReset, onNextIssue }) => {
     if (!face) return <div className="w-full h-full bg-gray-950" />;
     if (face.isLoading && !face.imageUrl) return <LoadingFX latestLog={logs[logs.length-1]} />;
     
@@ -67,7 +69,7 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, logs, onChoice, on
                         <button onClick={(e) => { e.stopPropagation(); onOpenBook(); }}
                         disabled={!isGateReady}
                         className="comic-btn bg-yellow-400 px-10 py-4 text-3xl font-bold hover:scale-105 animate-bounce disabled:animate-none disabled:bg-gray-400 disabled:cursor-wait">
-                            {(!isGateReady) ? `PRINTING... ${allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length}/${INITIAL_PAGES}` : 'READ ISSUE #1'}
+                            {(!isGateReady) ? `PRINTING... ${allFaces.filter(f => f.type==='story' && f.imageUrl && (f.pageIndex||0) <= GATE_PAGE).length}/${INITIAL_PAGES}` : 'READ ISSUE'}
                         </button>
                     </div>
                  </>
@@ -75,9 +77,35 @@ export const Panel: React.FC<PanelProps> = ({ face, allFaces, logs, onChoice, on
 
             {/* Back Cover Actions */}
             {face.type === 'back_cover' && (
-                <div className="absolute bottom-24 inset-x-0 flex flex-col items-center gap-4 z-20">
-                    <button onClick={(e) => { e.stopPropagation(); onDownload(); }} className="comic-btn bg-blue-500 text-white px-8 py-3 text-xl font-bold hover:scale-105">DOWNLOAD ISSUE</button>
-                    <button onClick={(e) => { e.stopPropagation(); onReset(); }} className="comic-btn bg-green-500 text-white px-8 py-4 text-2xl font-bold hover:scale-105">CREATE NEW ISSUE</button>
+                <div className="absolute bottom-16 inset-x-0 flex flex-col items-center gap-3 z-20 px-4">
+                    <button onClick={(e) => { e.stopPropagation(); onDownload(); }} 
+                        className="comic-btn bg-blue-500 text-white px-8 py-3 text-xl font-bold hover:scale-105 w-full max-w-sm">
+                        DOWNLOAD ISSUE
+                    </button>
+                    
+                    {!isFinale ? (
+                        <>
+                            <button onClick={(e) => { e.stopPropagation(); onNextIssue(false); }} 
+                                className="comic-btn bg-yellow-400 text-black px-8 py-4 text-2xl font-bold hover:scale-105 w-full max-w-sm border-4 border-black animate-pulse">
+                                NEXT ISSUE
+                            </button>
+                            <div className="flex gap-2 w-full max-w-sm">
+                                <button onClick={(e) => { e.stopPropagation(); onNextIssue(true); }} 
+                                    className="comic-btn bg-purple-600 text-white flex-1 py-2 text-sm font-bold hover:scale-105">
+                                    CREATE FINALE
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); onReset(); }} 
+                                    className="comic-btn bg-gray-600 text-white flex-1 py-2 text-sm font-bold hover:scale-105">
+                                    RESTART APP
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <button onClick={(e) => { e.stopPropagation(); onReset(); }} 
+                            className="comic-btn bg-green-500 text-white px-8 py-4 text-2xl font-bold hover:scale-105 w-full max-w-sm">
+                            START NEW SAGA
+                        </button>
+                    )}
                 </div>
             )}
         </div>

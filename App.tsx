@@ -42,6 +42,9 @@ const App: React.FC = () => {
   const [richMode, setRichModeState] = useState(true);
   const [refStrength, setRefStrengthState] = useState(2); // 1=Loose, 2=Balanced, 3=Strict
   
+  const [issueNumber, setIssueNumber] = useState(1);
+  const [isFinale, setIsFinale] = useState(false);
+
   // --- Refs for Async Access (Fixes Stale Closures) ---
   const heroRef = useRef<Persona | null>(null);
   const friendRef = useRef<Persona | null>(null);
@@ -51,6 +54,9 @@ const App: React.FC = () => {
   const toneRef = useRef(TONES[0]);
   const richModeRef = useRef(true);
   const refStrengthRef = useRef(2);
+  const issueNumberRef = useRef(1);
+  const isFinaleRef = useRef(false);
+  const previousSummaryRef = useRef("");
 
   // Sync State and Refs
   const setHero = (p: Persona | null) => { setHeroState(p); heroRef.current = p; };
@@ -61,6 +67,8 @@ const App: React.FC = () => {
   const setStoryTone = (v: string) => { setStoryToneState(v); toneRef.current = v; };
   const setRichMode = (v: boolean) => { setRichModeState(v); richModeRef.current = v; };
   const setRefStrength = (v: number) => { setRefStrengthState(v); refStrengthRef.current = v; };
+  const setIssueNumberSync = (v: number) => { setIssueNumber(v); issueNumberRef.current = v; };
+  const setIsFinaleSync = (v: boolean) => { setIsFinale(v); isFinaleRef.current = v; };
 
   const [apiStatus, setApiStatus] = useState<ApiStatus>('idle');
   const [apiErrorMessage, setApiErrorMessage] = useState<string | null>(null);
@@ -319,6 +327,30 @@ const App: React.FC = () => {
     });
   };
 
+  const generateSummary = async (history: ComicFace[]): Promise<string> => {
+      addLog("Archiving narrative thread...");
+      // Extract text content only
+      const text = history
+          .filter(h => h.narrative)
+          .map(h => `[Page ${h.pageIndex}] ${h.narrative?.caption || ''} ${h.narrative?.dialogue || ''} (Scene: ${h.narrative?.scene})`)
+          .join(" ");
+
+      if (!text) return "The story begins.";
+
+      try {
+          const ai = getAI();
+          const res = await withTimeout(ai.models.generateContent({
+              model: MODEL_TEXT_NAME,
+              contents: `Summarize the events of this comic issue in 3 sentences. Focus on the ending cliffhanger or resolution. TEXT: ${text}`,
+              config: { safetySettings: SAFETY_SETTINGS }
+          }), 20000);
+          return res.text || "To be continued...";
+      } catch (e) {
+          console.warn("Summary generation failed", e);
+          return "The story continues...";
+      }
+  };
+
   const generateBeat = async (history: ComicFace[], isRightPage: boolean, pageNum: number, isDecisionPage: boolean): Promise<Beat> => {
     if (!heroRef.current) throw new Error("No Hero");
     addLog(`Drafting narrative arc for Page ${pageNum}...`);
@@ -353,6 +385,13 @@ const App: React.FC = () => {
         coreDriver = `STORY PREMISE: ${premiseRef.current || "A totally unique, unpredictable adventure"}. (Follow this premise strictly over standard genre tropes).`;
     }
     
+    // Inject previous issue summary if applicable
+    let storyContext = "";
+    if (issueNumberRef.current > 1 && previousSummaryRef.current) {
+        storyContext += `PREVIOUS ISSUES RECAP: ${previousSummaryRef.current}\n`;
+    }
+    storyContext += `CURRENT ISSUE (${issueNumberRef.current}): ${historyText.length > 0 ? historyText : "Start of this issue."}`;
+
     const guardrails = `
     NEGATIVE CONSTRAINTS:
     1. UNLESS GENRE IS "Dark Sci-Fi" OR "Superhero Action" OR "Custom": DO NOT use technical jargon like "Quantum", "Timeline", "Portal", "Multiverse", or "Singularity".
@@ -361,17 +400,28 @@ const App: React.FC = () => {
     `;
 
     let instruction = `Continue the story. ALL OUTPUT TEXT (Captions, Dialogue, Choices) MUST BE IN ${langName.toUpperCase()}. ${coreDriver} ${guardrails}`;
+    
+    if (isFinaleRef.current) {
+        instruction += " IMPORTANT: THIS IS THE GRAND FINALE ISSUE. You must resolve all major plot lines.";
+    }
+
     if (richModeRef.current) {
         instruction += " RICH/NOVEL MODE ENABLED. Prioritize deeper character thoughts, descriptive captions, and meaningful dialogue exchanges over short punchlines.";
     }
 
     if (isFinalPage) {
-        instruction += " FINAL PAGE. KARMIC CLIFFHANGER REQUIRED. You MUST explicitly reference the User's choice from PAGE 3 in the narrative and show how that specific philosophy led to this conclusion. Text must end with 'TO BE CONTINUED...' (or localized equivalent).";
+        if (isFinaleRef.current) {
+             instruction += " FINAL PAGE OF THE SERIES. CONCLUSIVE ENDING. End with 'THE END'. Do NOT leave a cliffhanger.";
+        } else {
+             instruction += " FINAL PAGE OF THIS ISSUE. KARMIC CLIFFHANGER REQUIRED. Text must end with 'TO BE CONTINUED...' (or localized equivalent).";
+        }
     } else if (isDecisionPage) {
         instruction += " End with a PSYCHOLOGICAL choice about VALUES, RELATIONSHIPS, or RISK. (e.g., Truth vs. Safety, Forgive vs. Avenge). The options must NOT be simple physical actions like 'Go Left'.";
     } else {
         if (pageNum === 1) {
-            instruction += " INCITING INCIDENT. An event disrupts the status quo. Establish the genre's intended mood.";
+            instruction += isFinaleRef.current 
+                ? " THE BEGINNING OF THE END. Establish the final conflict immediately."
+                : " INCITING INCIDENT. An event disrupts the status quo. Establish the genre's intended mood.";
         } else if (pageNum <= 4) {
             instruction += " RISING ACTION. The heroes engage with the new situation. Focus on dialogue, character dynamics, and initial challenges.";
         } else if (pageNum <= 8) {
@@ -385,7 +435,7 @@ const App: React.FC = () => {
     const diaLimit = richModeRef.current ? "max 30 words. Rich, character-driven speech" : "max 12 words";
 
     const prompt = `
-You are writing a comic book script. PAGE ${pageNum} of ${MAX_STORY_PAGES}.
+You are writing a comic book script. PAGE ${pageNum} of ${MAX_STORY_PAGES}. ISSUE #${issueNumberRef.current}.
 TARGET LANGUAGE FOR TEXT: ${langName} (CRITICAL: CAPTIONS, DIALOGUE, CHOICES MUST BE IN THIS LANGUAGE).
 ${coreDriver}
 
@@ -393,8 +443,8 @@ CHARACTERS:
 - HERO: Active.
 - CO-STAR: ${friendInstruction}
 
-PREVIOUS PANELS (READ CAREFULLY):
-${historyText.length > 0 ? historyText : "Start the adventure."}
+CONTEXT:
+${storyContext}
 
 RULES:
 1. NO REPETITION. Do not use the same captions or dialogue from previous pages.
@@ -518,14 +568,18 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
 
         if (type === 'cover') {
             const langName = LANGUAGES.find(l => l.code === langRef.current)?.name || "English";
-            text += `TYPE: Comic Book Cover. TITLE: "INFINITE HEROES" (OR LOCALIZED TRANSLATION IN ${langName.toUpperCase()}). `;
+            let title = `ISSUE #${issueNumberRef.current}`;
+            if (isFinaleRef.current) title = "THE FINALE";
+            
+            text += `TYPE: Comic Book Cover. TITLE: "INFINITE HEROES ${title}" (OR LOCALIZED TRANSLATION IN ${langName.toUpperCase()}). `;
             if (retryLevel > 0) {
                 text += `Main visual: Character Portrait of [HERO]. Standing Pose. Masterpiece.`;
             } else {
                 text += `Main visual: Dynamic action shot of [HERO].`;
             }
         } else if (type === 'back_cover') {
-            text += `TYPE: Comic Back Cover. FULL PAGE VERTICAL ART. Dramatic teaser. Text: "NEXT ISSUE SOON".`;
+            const nextText = isFinaleRef.current ? "THE END" : "NEXT ISSUE SOON";
+            text += `TYPE: Comic Back Cover. FULL PAGE VERTICAL ART. Dramatic teaser. Text: "${nextText}".`;
         } else {
             text += `TYPE: Vertical comic panel. `;
             
@@ -777,31 +831,15 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
       }
   }
 
-  const launchStory = async () => {
-    const hasKey = await validateApiKey();
-    if (!hasKey) return;
-    
-    if (!heroRef.current) return;
-    if (selectedGenre === 'Custom' && !customPremise.trim()) {
-        alert("Please enter a custom story premise.");
-        return;
-    }
-    
+  // Consolidated launch logic that handles both initial launch and next issue
+  const startIssueGeneration = async (isNewIssue: boolean) => {
     setIsLaunching(true);
-    setLogs([]);
-    addLog("Initializing Multiverse Core...");
-    addLog(`Setting Genre: ${selectedGenre.toUpperCase()}`);
-    
-    let availableTones = TONES;
-    if (selectedGenre === "Teen Drama / Slice of Life" || selectedGenre === "Lighthearted Comedy") {
-        availableTones = TONES.filter(t => t.includes("CASUAL") || t.includes("WHOLESOME") || t.includes("QUIPPY"));
-    } else if (selectedGenre === "Classic Horror") {
-        availableTones = TONES.filter(t => t.includes("INNER-MONOLOGUE") || t.includes("OPERATIC"));
+    if (!isNewIssue) {
+        setLogs([]);
+        addLog("Initializing Multiverse Core...");
+    } else {
+        addLog(`Preparing Issue #${issueNumberRef.current}...`);
     }
-    
-    const tone = availableTones[Math.floor(Math.random() * availableTones.length)];
-    setStoryTone(tone);
-    addLog(`Harmonizing Tone: ${tone.split(' ')[0]}`);
 
     const coverFace: ComicFace = { id: 'cover', type: 'cover', choices: [], isLoading: true, pageIndex: 0 };
     setComicFaces([coverFace]);
@@ -828,6 +866,55 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
     }, 1100);
   };
 
+  const launchStory = async () => {
+    const hasKey = await validateApiKey();
+    if (!hasKey) return;
+    
+    if (!heroRef.current) return;
+    if (selectedGenre === 'Custom' && !customPremise.trim()) {
+        alert("Please enter a custom story premise.");
+        return;
+    }
+    
+    addLog(`Setting Genre: ${selectedGenre.toUpperCase()}`);
+    let availableTones = TONES;
+    if (selectedGenre === "Teen Drama / Slice of Life" || selectedGenre === "Lighthearted Comedy") {
+        availableTones = TONES.filter(t => t.includes("CASUAL") || t.includes("WHOLESOME") || t.includes("QUIPPY"));
+    } else if (selectedGenre === "Classic Horror") {
+        availableTones = TONES.filter(t => t.includes("INNER-MONOLOGUE") || t.includes("OPERATIC"));
+    }
+    const tone = availableTones[Math.floor(Math.random() * availableTones.length)];
+    setStoryTone(tone);
+    addLog(`Harmonizing Tone: ${tone.split(' ')[0]}`);
+
+    // Initial launch reset
+    setIssueNumberSync(1);
+    setIsFinaleSync(false);
+    previousSummaryRef.current = "";
+
+    startIssueGeneration(false);
+  };
+
+  const handleNextIssue = async (finale: boolean) => {
+      // 1. Generate Summary of current book
+      const summary = await generateSummary(historyRef.current);
+      previousSummaryRef.current += `\n[Issue ${issueNumberRef.current} Summary]: ${summary}`;
+      addLog("Issue archived.");
+
+      // 2. Advance Issue Tracking
+      setIssueNumberSync(issueNumberRef.current + 1);
+      setIsFinaleSync(finale);
+      
+      // 3. Hard Reset for new book
+      setComicFaces([]);
+      setCurrentSheetIndex(0);
+      historyRef.current = [];
+      generatingPages.current.clear();
+      
+      // 4. Start
+      startIssueGeneration(true);
+  };
+
   const handleChoice = async (pageIndex: number, choice: string) => {
       addLog(`User made a choice: ${choice}. Branching timeline...`);
       updateFaceState(`page-${pageIndex}`, { resolvedChoice: choice });
@@ -849,6 +936,10 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
       setHero(null);
       setFriend(null);
       setApiStatus('idle');
+      // Reset issue tracking
+      setIssueNumberSync(1);
+      setIsFinaleSync(false);
+      previousSummaryRef.current = "";
   };
 
   const downloadPDF = () => {
@@ -862,7 +953,7 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
         if (index > 0) doc.addPage([PAGE_WIDTH, PAGE_HEIGHT], 'portrait');
         if (face.imageUrl) doc.addImage(face.imageUrl, 'JPEG', 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
     });
-    doc.save('Infinite-Heroes-Issue.pdf');
+    doc.save(`Infinite-Heroes-Issue-${issueNumber}.pdf`);
     addLog("Download triggered.");
   };
 
@@ -924,11 +1015,13 @@ OUTPUT STRICT JSON ONLY (No markdown formatting):
           isStarted={isStarted}
           isSetupVisible={showSetup && !isTransitioning}
           logs={logs}
+          isFinale={isFinale}
           onSheetClick={handleSheetClick}
           onChoice={handleChoice}
           onOpenBook={() => setCurrentSheetIndex(1)}
           onDownload={downloadPDF}
           onReset={resetApp}
+          onNextIssue={(isFinale) => handleNextIssue(isFinale)}
       />
     </div>
   );
